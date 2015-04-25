@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style> /* set the CSS */
+
+body { font: 12px Arial;}
+
+path { 
+    fill: none;
+}
+
+.axis path,
+.axis line {
+    fill: none;
+    stroke: grey;
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+}
+
+.dot {
+  stroke: #000;
+}
+
+.asdf.dot {
+  stroke: #000;
+}
+
+</style>
+<body>
+
+<!-- load the d3.js library -->    
+<script src="http://d3js.org/d3.v3.min.js"></script>
+
+<script>
+var margin = {top: 30, right: 20, bottom: 30, left: 50},
+    width = 600 - margin.left - margin.right,
+    height = 270 - margin.top - margin.bottom;
+
+var parseDate = d3.time.format("%Y-%m-%d %H:%M:%S").parse;
+
+var x = d3.time.scale().range([0, width]);
+var y = d3.scale.linear().range([height, 0]);
+
+var xAxis = d3.svg.axis().scale(x)
+  .orient("bottom").ticks(5);
+
+var yAxis = d3.svg.axis().scale(y)
+   .orient("left");
+
+var valueline = d3.svg.line()
+    .x(function(d) { return x(d.time); })
+    .y(function(d) { return y(d.trend); });
+
+var valueline_old_thresh = d3.svg.line()
+    .x(function(d) { return x(d.time); })
+    .y(function(d) { return y(d.threshold); });
+
+var valueline2 = d3.svg.line()
+    .x(function(d) { return x(d.time); })
+    .y(function(d) { return y(d.forecast_trend); });
+
+var valueline_low = d3.svg.line()
+    .x(function(d) { return x(d.time); })
+    .y(function(d) { return y(d.forecast_low); });
+
+var valueline_high = d3.svg.line()
+    .x(function(d) { return x(d.time); })
+    .y(function(d) { return y(d.forecast_high); });
+
+var valueline_threshold = d3.svg.line()
+    .x(function(d) { return x(d.time); })
+    .y(function(d) { return y(d.threshold); });
+    
+var svg = d3.select("body")
+    .append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+        .attr("transform", 
+              "translate(" + margin.left + "," + margin.top + ")");
+
+d3.csv("past_kpi.csv", function(error, data) {
+    data.forEach(function(d) {
+        d.time = parseDate(d.time);
+        d.kpi = d.kpi;
+        d.trend = d.trend;
+        d.threshold = d.threshold;
+    });
+
+	console.log(d3.extent(data, function(d) { return d.time; }));
+	console.log(d3.extent(data, function(d) {return d.kpi * 1.05;}));
+
+	var dd1 = Date.parse("Thu Oct 30 2014 00:00:00 GMT-0400 (EDT)")
+	var dd2 = Date.parse("Mon May 25 2015 16:00:00 GMT-0400 (EDT)")
+
+	x.domain([dd1, dd2]);
+	y.domain(["-79.67559075", "2415"]);
+	//x.domain(d3.extent(data, function(d) { return d.time; }));
+	//y.domain(d3.extent(data, function(d) { return d.kpi * 1.05; }));
+
+	//////////////////////////
+	d3.csv("forecast_kpi.csv", function(error, data2) {
+		data2.forEach(function(d) {
+			d.time = parseDate(d.time);
+			d.forecast_trend = d.forecast_trend;
+			d.forecast_low = d.forecast_low;
+			d.forecast_high = d.forecast_high;
+			d.threshold = d.threshold;
+		});
+	
+	//x.domain(d3.extent(data2, function(d) { return d.time; }));
+	//y.domain(d3.extent(data2, function(d) { return d.forecast_trend;}));
+
+	console.log(d3.extent(data2, function(d) { return d.time; }));
+	console.log(d3.extent(data2, function(d) { return d.forecast_trend; }));
+
+	svg.append("path")
+		.attr("stroke",  '#000')
+		.attr("stroke-dasharray", "5,5")
+		.attr("stroke-width",  '2')
+		.attr("d", valueline2(data2));
+	
+	svg.append("path")
+		.attr("stroke",  '#00A')
+		.attr("stroke-dasharray", "5,5")
+		.attr("stroke-width",  '3')
+		.attr("d", valueline_low(data2));
+
+	svg.append("path")
+		.attr("stroke",  '#00A')
+		.attr("stroke-dasharray", "5,5")
+		.attr("stroke-width",  '3')
+		.attr("d", valueline_high(data2));
+	
+	svg.append("path")
+		.attr("stroke",  '#F00')
+		.attr("stroke-width",  '3')
+		.attr("d", valueline_threshold(data2));
+
+	});
+	/////////////////////////
+
+	svg.append("path")
+	.attr("stroke",  '#000')
+	.attr("stroke-width",  '3')
+	.attr("d", valueline(data));
+
+	svg.append("path")
+	.attr("stroke",  '#F00')
+	.attr("stroke-width",  '3')
+	.attr("d", valueline_old_thresh(data));
+
+	svg.selectAll(".dot").data(data)
+		.enter().append("circle").attr("class", "dot").attr("r", 1)
+		.attr("cx", function(d) { return x(d.time); })
+		.attr("cy", function(d) { return y(d.kpi); })
+		.style("fill", '#000');
+
+	svg.append("g")
+		.attr("class", "x axis")
+		.attr("transform", "translate(0," + height + ")")
+		.call(xAxis);
+
+	svg.append("g")
+		.attr("class", "y axis")
+		.call(yAxis);
+});
+
+</script>
+</body>
