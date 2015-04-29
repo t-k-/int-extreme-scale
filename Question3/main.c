@@ -24,11 +24,14 @@ struct prog {
 	struct dep_ptr *dp;
 };
 
+int cnt_unfree = 0;
+
 void prog_dep_add(struct prog *pg0, struct prog *pg1)
 {
 	struct dep_ptr *save, **p = &pg0->dp;
 	save = *p;
 	*p = malloc(sizeof(struct dep_ptr));
+	cnt_unfree ++;
 	(*p)->pg = pg1;
 	(*p)->next = save;
 }
@@ -66,7 +69,9 @@ void add_dependency(struct prog *root, char a, char b)
 
 	if (found_a == NULL) {
 		found_a = malloc(sizeof(struct prog));
+		cnt_unfree ++;
 		found_a->name = a;
+		found_a->dp = NULL;
 		prog_dep_add(root, found_a);
 	} 
 
@@ -74,8 +79,10 @@ void add_dependency(struct prog *root, char a, char b)
 
 	if (found_b == NULL) {
 		found_b = malloc(sizeof(struct prog));
+		cnt_unfree ++;
 		found_b->name = b;
 		found_b->stage = S_READY;
+		found_b->dp = NULL;
 		prog_dep_add(root, found_b);
 	} 
 
@@ -99,10 +106,12 @@ void print_all_dependencies(struct prog *root)
 		}
 		printf("for program %c (%s): ", 
 		       p->pg->name, comment);
-		prog_dep_pri(p->pg);
+		if (p->pg)
+			prog_dep_pri(p->pg);
 		p = p->next;
 	}
 }
+
 
 int run_ready_programs(struct prog *root, unsigned int limit)
 {
@@ -172,12 +181,107 @@ int test()
 	return 0;
 }
 
+void rm_dep(struct prog *root, struct prog *rm)
+{
+	struct dep_ptr *q, *p = root->dp;
+	struct dep_ptr **prev;
+
+	while (p != NULL) {
+		q = p->pg->dp;
+		prev = &p->pg->dp;
+		while (q != NULL) {
+			if (q->pg == rm) {
+				*prev = q->next;
+//				printf("delete dependency %c from %c...\n", 
+//						q->pg->name, p->pg->name);
+				free(q);
+				cnt_unfree --;
+				break;
+			}
+
+			prev = &q->next;
+			q = q->next;
+		}
+
+		p = p->next;
+	}
+}
+
+int rm_one_without_dep(struct prog *root)
+{
+	struct dep_ptr *p = root->dp;
+	struct dep_ptr **prev = &root->dp;
+	int ret = 0;
+
+	while (p != NULL) {
+		if (p->pg->dp == NULL) {
+			*prev = p->next;
+			rm_dep(root, p->pg);
+			//printf("delete %c...\n", p->pg->name);
+			free(p->pg);
+			free(p);
+			cnt_unfree -= 2;
+			ret = 1;
+			break;
+		}
+
+		prev = &p->next;
+		p = p->next;
+	}
+
+	return ret;
+}
+
+int loop_test(struct prog *root)
+{
+	do {
+		;
+		//print_all_dependencies(root);
+	} while (rm_one_without_dep(root));
+
+	if (root->dp != NULL) {
+		printf("there is a loop:\n");
+		print_all_dependencies(root);
+		return 1;
+	}
+
+	return 0;
+}
+
+int free_all_dep(struct prog *prog, int free_prog)
+{
+	struct dep_ptr *save;
+	while (prog->dp) {
+		save = prog->dp;
+		prog->dp = prog->dp->next;
+		if (free_prog) {
+			free(save->pg);
+			cnt_unfree --;
+		}
+		free(save);
+		cnt_unfree --;
+	}
+}
+
+int free_all(struct prog *root)
+{
+	struct dep_ptr *p = root->dp;
+	while (p != NULL) {
+		free_all_dep(p->pg, 0);
+		p = p->next;
+	}
+
+	free_all_dep(root, 1);
+}
+
 int main(int argc, char* argv[])
 {
 	struct prog root = {'\0', 0, NULL};
 	unsigned int limit = LIMIT_INFTY;
 	char conf_file[] = "dep.cfg";
 	char line_buff[4096];
+	int loop_exist;
+	int read_again;
 	int res = 1;
 	char a, b;
 	FILE *fh;
@@ -197,6 +301,9 @@ int main(int argc, char* argv[])
         }
     }
 
+	read_again = 0;
+read_again:
+
 	fh = fopen(conf_file, "r");
 
 	if (fh == NULL) {
@@ -212,8 +319,23 @@ int main(int argc, char* argv[])
 
 	fclose(fh);
 
+	if (!read_again) {
+		loop_exist = loop_test(&root);
+
+		if (loop_exist) {
+			goto exit;
+		} else {
+			read_again = 1;
+			printf("read again...\n");
+			goto read_again;
+		}
+	}
+
 	while (res)
 		res = run_ready_programs(&root, limit);
 		
+exit:
+	free_all(&root);
+	printf("unfree: %d\n", cnt_unfree);
 	return 0;
 }
